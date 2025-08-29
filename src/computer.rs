@@ -1,4 +1,6 @@
-
+use num_bigint::BigUint;
+use num_traits::One; // Ensure the trait is in scope for BigUint::one()
+use num_traits::ToPrimitive;
 
 pub struct Memory {
     data: Vec<u8>,
@@ -82,21 +84,57 @@ fn add_u8_arrays(a: &[u8], b: &[u8]) -> Vec<u8> {
     result
 }
 
+// Subtracts b from a, treating both as big-endian arrays of u8.
+// If b > a, result will wrap around (not negative).
+fn sub_u8_arrays(a: &[u8], b: &[u8]) -> Vec<u8> {
+    let max_len = a.len().max(b.len());
+    let mut result = Vec::with_capacity(max_len);
+    let mut borrow: i16 = 0;
+
+    for i in 0..max_len {
+        let digit_a = if i < a.len() { a[a.len() - 1 - i] } else { 0 };
+        let digit_b = if i < b.len() { b[b.len() - 1 - i] } else { 0 };
+
+        let mut diff = digit_a as i16 - digit_b as i16 - borrow;
+        if diff < 0 {
+            diff += 256;
+            borrow = 1;
+        } else {
+            borrow = 0;
+        }
+        result.push(diff as u8);
+    }
+
+    // Remove leading zeros
+    while result.len() > 1 && *result.last().unwrap() == 0 {
+        result.pop();
+    }
+
+    result.reverse();
+    result
+}
+
 #[derive(Clone)]
 pub enum SubInstructions {
     NoOperation,
     Halt,
     LoadImmediate(u8),
-    LoadFromMemory(u8),
+    LoadFromMemory,
     LoadFromRegister(u8),
     LoadFromRegisterInternal(u8),
-    StoreToMemory(u8),
+    SetMemoryAddress,
+    StoreToMemory,
     StoreToRegister(u8),
     StoreToRegisterInternal(u8),
     StepProgramMemory(u8),
     Add,
+    Sub,
     PushToStack,
-    PopFromStack
+    PopFromStack,
+    Jump,
+    Compare,
+    JumpIfFlag(u8, u8),
+    JumpIfNotFlag(u8, u8),
 }
 
 // Implement execution logic for SubInstructions
@@ -111,8 +149,9 @@ impl SubInstructions {
                 let value = cpu.read_program_memory_offset(*data_offset);
                 cpu.accumulator = [value].to_vec();
             }
-            SubInstructions::LoadFromMemory(data_offset) => {
-                let address = cpu.read_program_memory_offset(*data_offset) as usize;
+            SubInstructions::LoadFromMemory => {
+                // TODO: handle longer numbers
+                let address = cpu.read_register_string("memory_address").clone().unwrap()[0] as usize;
                 let value = cpu.memory.read_chunk(address, address + cpu.cpu_data_size as usize);
                 cpu.accumulator = value.to_vec();
             }
@@ -123,8 +162,13 @@ impl SubInstructions {
             SubInstructions::LoadFromRegisterInternal(register) => {
                 cpu.accumulator = cpu.read_register(*register).unwrap_or(&[0]).to_vec();
             }
-            SubInstructions::StoreToMemory(data_offset) => {
-                let address = cpu.read_program_memory_offset(*data_offset) as usize;
+            SubInstructions::SetMemoryAddress => {
+               let value = cpu.accumulator.clone();
+               let _ = cpu.write_register_string("memory_address", &value);
+            }
+            SubInstructions::StoreToMemory => {
+                // TODO: handle longer numbers
+                let address = cpu.read_register_string("memory_address").clone().unwrap()[0] as usize;
                 let value = &cpu.accumulator;
                 cpu.memory.write_chunk(address, value.as_slice());
             }
@@ -146,6 +190,12 @@ impl SubInstructions {
                 let sum_value = add_u8_arrays(a_value.unwrap(), b_value.unwrap());
                 cpu.accumulator = sum_value;
             }
+            SubInstructions::Sub => {
+                let a_value = cpu.read_register_string("reg_a");
+                let b_value = cpu.read_register_string("reg_b");
+                let sub_value = sub_u8_arrays(a_value.unwrap(), b_value.unwrap());
+                cpu.accumulator = sub_value;
+            }
             SubInstructions::PushToStack => {
                 let stack_pointer = cpu.read_register_string("stack_pointer").unwrap()[0] as usize;
                 let destination = stack_pointer - cpu.accumulator.len() + 1;
@@ -157,6 +207,48 @@ impl SubInstructions {
                 cpu.accumulator = cpu.memory.read_chunk(stack_pointer, stack_pointer + cpu.cpu_data_size as usize).to_vec();
                 cpu.memory.write_chunk(stack_pointer, vec![0; cpu.cpu_data_size as usize].as_slice());
                 let _ = cpu.write_register_string("stack_pointer", &[stack_pointer as u8]);
+            }
+            SubInstructions::Jump => {
+                // TODO: handle longer numbers
+                let address = cpu.accumulator[0] as usize;
+                cpu.program_counter = address;
+                cpu.current_opcode = None;
+            }
+            SubInstructions::Compare => {
+                // Compare reg_a to reg_b
+                // TODO: handle longer numbers
+                let a = cpu.read_register_string("reg_a").unwrap()[0];
+                let b = cpu.read_register_string("reg_b").unwrap()[0];
+                if a == b {
+                    cpu.flags |= ZERO_FLAG;
+                    cpu.flags &= !GREATER_FLAG;
+                } else if a > b {
+                    cpu.flags |= GREATER_FLAG;
+                    cpu.flags &= !ZERO_FLAG;
+                } else {
+                    cpu.flags &= !(ZERO_FLAG | GREATER_FLAG);
+                }
+            }
+            SubInstructions::JumpIfFlag(true_mask, false_mask) => {
+                // Jump if all bits in true_mask are set and all bits in false_mask are clear
+                let true_condition = (cpu.flags & true_mask) == *true_mask;
+                let false_condition = (cpu.flags & false_mask) == 0;
+                if true_condition && false_condition {
+                    let address = cpu.accumulator[0] as usize;
+                    cpu.program_counter = address;
+                    cpu.current_opcode = None;
+                }
+            }
+
+            SubInstructions::JumpIfNotFlag(true_mask, false_mask) => {
+                // Jump if NOT (all bits in true_mask are set and all bits in false_mask are clear)
+                let true_condition = (cpu.flags & true_mask) == *true_mask;
+                let false_condition = (cpu.flags & false_mask) == 0;
+                if !(true_condition && false_condition) {
+                    let address = cpu.accumulator[0] as usize;
+                    cpu.program_counter = address;
+                    cpu.current_opcode = None;
+                }
             }
         }
     }
@@ -215,6 +307,16 @@ impl Registers {
 
 use std::{collections::HashMap, hash::Hash, i32, ops::Sub, vec};
 
+// Truth Table
+// 
+// L (less than), G (greater than), E(equal), N (No compare)
+// Zero Flag    | 0 0 1 1
+// Greater Flag | 0 1 0 1
+// CompareStatus| L G E N
+const ZERO_FLAG: u8 = 0b0000_0001;
+const GREATER_FLAG: u8 = 0b0000_0010;
+
+// TODO: move accumulator, program_counter, flags to registers
 pub struct CPU {
     pub program_counter: usize,
     pub accumulator: Vec<u8>,
@@ -224,11 +326,10 @@ pub struct CPU {
     pub storage: Storage,
     pub instruction_set: HashMap<u8, Instruction>,
     pub cpu_data_size: u8,
-
     pub current_opcode: Option<u8>,
     pub current_sub_step: u8,
     pub halted: bool,
-
+    pub flags: u8,
 }
 
 impl CPU {
@@ -245,6 +346,7 @@ impl CPU {
             current_opcode: None,
             current_sub_step: 0,
             halted: false,
+            flags: 0,
         };
         cpu.write_register_string("stack_pointer", &[cpu.memory.data.len() as u8 - 1]).unwrap();
         cpu
@@ -313,21 +415,42 @@ impl CPU {
     }
 
     pub fn read_program_memory(&mut self) -> u8 {
-        let value = self.memory.read(self.program_counter);
-        value
+        let counter = self.get_program_counter();
+        let address = counter.to_usize().expect("Program counter outside usize range");
+        self.memory.read(address)
     }
 
     pub fn read_program_memory_offset(&self, offset: u8) -> u8 {
-        self.memory.read(self.program_counter + offset as usize)
+        let counter = self.get_program_counter();
+        let total = counter + BigUint::from(offset);
+        let address = total.to_usize().expect("Program counter + offset outside usize range");
+        self.memory.read(address)
     }
 
-    pub fn step_size(&mut self, size: u8) {
-        self.program_counter += size as usize;
+    pub fn get_program_counter(&self) -> BigUint {
+        let bytes = self.read_register_string("program_counter").expect("Program Counter register not found.");
+        BigUint::from_bytes_be(bytes)
+    }
+
+    pub fn get_program_counter_bytes(&self) -> &[u8] {
+        self.read_register_string("program_counter").expect("Program Counter register not found.")
     }
 
     pub fn step(&mut self) {
-        self.program_counter += 1;
+        let counter = self.get_program_counter();
+        let new_counter = counter + BigUint::one();
+        let new_counter_bytes = new_counter.to_bytes_be();
+        let _ = self.write_register_string("program_counter", &new_counter_bytes).expect("Failed to write program counter");
     }
+
+    pub fn step_size(&mut self, size: u8) {
+        let counter = self.get_program_counter();
+        let new_counter = counter + size;
+        let new_counter_bytes = new_counter.to_bytes_be();
+        let _ = self.write_register_string("program_counter", &new_counter_bytes).expect("Failed to write program counter");
+    }
+
+    
 
     pub fn unhalt(&mut self) {
         self.halted = false;
@@ -375,13 +498,22 @@ impl CPU {
 
 pub fn create_default_cpu_with_memory(memory: Memory, storage: Storage) -> CPU {
     let mut registers = Registers::new();
-    registers.add_register("stack_pointer".to_string(), 1, 0);
-    registers.add_register("return_address".to_string(), 1, 1);
-    registers.add_register("reg_a".to_string(), 1, 2);
-    registers.add_register("reg_b".to_string(), 1, 3);
-    registers.add_register("reg_0".to_string(), 1, 4);
-    registers.add_register("reg_1".to_string(), 1, 5);
-    registers.add_register("reg_2".to_string(), 1, 6);
+    registers.add_register("program_counter".to_string(), 1, 0);
+    registers.add_register("accumulator".to_string(), 1, 1);
+    registers.add_register("flags".to_string(), 1, 2);
+    registers.add_register("stack_pointer".to_string(), 1, 3);
+    registers.add_register("return_address".to_string(), 1, 4);
+    registers.add_register("memory_pointer".to_string(), 1, 5);
+    registers.add_register("instruction_temp_0".to_string(), 1, 6);
+    registers.add_register("instruction_temp_1".to_string(), 1, 7);
+    registers.add_register("instruction_temp_2".to_string(), 1, 8);
+    registers.add_register("instruction_temp_3".to_string(), 1, 9);
+    registers.add_register("reg_a".to_string(), 1, 10);
+    registers.add_register("reg_b".to_string(), 1, 11);
+    registers.add_register("reg_c".to_string(), 1, 12);
+    registers.add_register("reg_0".to_string(), 1, 13);
+    registers.add_register("reg_1".to_string(), 1, 14);
+    registers.add_register("reg_2".to_string(), 1, 15);
 
     CPU::new(registers, memory, storage)
 }

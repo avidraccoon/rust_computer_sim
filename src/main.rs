@@ -2,26 +2,45 @@
 use colored::*;
 mod computer;
 mod writers;
+mod instructions;
 
 use computer::{Memory, Storage, CPU, Instruction, SubInstructions};
+use num_bigint::BigUint;
+use num_traits::{One, Zero};
 use std::{collections::HashMap, mem, net::AddrParseError, time::Duration};
-
+use instructions::add_instructions;
 // Define a constant for the sub_instructions Vec
 
 #[repr(u8)]
 #[derive(Hash, Eq, PartialEq, Debug)]
 enum InstructionSet {
-    NoOperation,    // No args
-    Halt,           // No args
-    LoadFromMemory, // #Addr #Reg
-    StoreToMemory,  // #Reg #Addr
-    AddImmediate,   // #Reg #Imm
-    AddReg,         // #Reg #Reg
-    LoadImmediate,  // #Reg #Imm
-    MoveRegister,   // #Reg #Reg
-    PushImmediate,  // #Imm
-    PushReg,        // #Reg
-    PopReg,         // #Reg
+    NoOperation,        // No args
+    Halt,               // No args
+    LoadFromMemory,     // #Addr #Reg
+    StoreToMemory,      // #Reg #Addr
+    LoadFromMemoryReg,  // #Reg/Addr #Reg
+    StoreToMemoryReg,   // #Reg #Reg/Addr
+    AddImmediate,       // #Reg #Imm
+    AddReg,             // #Reg #Reg
+    LoadImmediate,      // #Reg #Imm
+    MoveRegister,       // #Reg #Reg
+    PushImmediate,      // #Imm
+    PushReg,            // #Reg
+    PopReg,             // #Reg
+    Jump,               // #Addr
+    JumpEqual,          // #Reg/Addr #Reg (A) #Imm (B)
+    JumpNotEqual,       // #Reg/Addr #Reg (A) #Imm (B)
+    JumpGreaterThan,    // #Reg/Addr #Reg (A) #Imm (B)
+    JumpLessThan,       // #Reg/Addr #Reg (A) #Imm (B)
+    JumpLessEqual,      // #Reg/Addr #Reg (A) #Imm (B)
+    JumpGreaterEqual,   // #Reg/Addr #Reg (A) #Imm (B)
+    JumpReg,            // #Reg/Addr
+    JumpEqualReg,       // #Reg/Addr #Reg (A) #Reg (B)
+    JumpNotEqualReg,    // #Reg/Addr #Reg (A) #Reg (B)
+    JumpGreaterThanReg, // #Reg/Addr #Reg (A) #Reg (B)
+    JumpLessThanReg,    // #Reg/Addr #Reg (A) #Reg (B)
+    JumpLessEqualReg,   // #Reg/Addr #Reg (A) #Reg (B)
+    JumpGreaterEqualReg,// #Reg/Addr #Reg (A) #Reg (B)
 }
 
 impl Into<u8> for InstructionSet {
@@ -37,63 +56,7 @@ fn main() {
     };
     let mut instruction_set_writer = writers::InstructionSetWriter::new();
 
-    instruction_set_writer.add_instruction(InstructionSet::NoOperation, 0);
-
-    instruction_set_writer.add_instruction(InstructionSet::Halt, 0)
-        .add_sub_instruction(SubInstructions::Halt);
-
-    instruction_set_writer.add_instruction(InstructionSet::LoadFromMemory, 2)
-        .add_sub_instruction(SubInstructions::LoadFromMemory(1))
-        .add_sub_instruction(SubInstructions::StoreToRegister(2))
-        .add_sub_instruction(SubInstructions::StepProgramMemory(2));
-
-    instruction_set_writer.add_instruction(InstructionSet::StoreToMemory, 2)
-        .add_sub_instruction(SubInstructions::LoadFromRegister(1))
-        .add_sub_instruction(SubInstructions::StoreToMemory(2))
-        .add_sub_instruction(SubInstructions::StepProgramMemory(2));
-
-    instruction_set_writer.add_instruction(InstructionSet::AddImmediate, 2)
-        .add_sub_instruction(SubInstructions::LoadFromRegister(1))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(ref_reg("reg_a")))
-        .add_sub_instruction(SubInstructions::LoadImmediate(2))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(ref_reg("reg_b")))
-        .add_sub_instruction(SubInstructions::Add)
-        .add_sub_instruction(SubInstructions::StoreToRegister(1))
-        .add_sub_instruction(SubInstructions::StepProgramMemory(2));
-
-    instruction_set_writer.add_instruction(InstructionSet::AddReg, 2)
-        .add_sub_instruction(SubInstructions::LoadFromRegister(1))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(ref_reg("reg_a")))
-        .add_sub_instruction(SubInstructions::LoadFromRegister(2))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(ref_reg("reg_b")))
-        .add_sub_instruction(SubInstructions::Add)
-        .add_sub_instruction(SubInstructions::StoreToRegister(1))
-        .add_sub_instruction(SubInstructions::StepProgramMemory(2));
-
-    instruction_set_writer.add_instruction(InstructionSet::LoadImmediate, 2)
-        .add_sub_instruction(SubInstructions::LoadImmediate(2))
-        .add_sub_instruction(SubInstructions::StoreToRegister(1))
-        .add_sub_instruction(SubInstructions::StepProgramMemory(2));
-
-    instruction_set_writer.add_instruction(InstructionSet::MoveRegister, 2)
-        .add_sub_instruction(SubInstructions::LoadFromRegister(1))
-        .add_sub_instruction(SubInstructions::StoreToRegister(2))
-        .add_sub_instruction(SubInstructions::StepProgramMemory(2));
-
-    instruction_set_writer.add_instruction(InstructionSet::PushImmediate, 1)
-        .add_sub_instruction(SubInstructions::LoadImmediate(1))
-        .add_sub_instruction(SubInstructions::PushToStack)
-        .add_sub_instruction(SubInstructions::StepProgramMemory(1));
-
-    instruction_set_writer.add_instruction(InstructionSet::PushReg, 1)
-        .add_sub_instruction(SubInstructions::LoadFromRegister(1))
-        .add_sub_instruction(SubInstructions::PushToStack)
-        .add_sub_instruction(SubInstructions::StepProgramMemory(1));
-
-    instruction_set_writer.add_instruction(InstructionSet::PopReg, 1)
-        .add_sub_instruction(SubInstructions::PopFromStack)
-        .add_sub_instruction(SubInstructions::StoreToRegister(1))
-        .add_sub_instruction(SubInstructions::StepProgramMemory(1));
+    add_instructions(&mut instruction_set_writer, &mut ref_reg);
 
     let reg_0 = ref_reg("reg_0");
     let reg_1 = ref_reg("reg_1");
@@ -118,14 +81,14 @@ fn main() {
 
     let program = program_writer.build();
     cpu.memory.write_chunk(0, program.as_slice());
-    let bytes_per_row = 8;
+    let bytes_per_row = BigUint::from(8u32);
     let print_at_end_of_op = false;
     let clear_screen = true;
     let sleep = true;
     let sleep_time_after_op = Duration::from_millis(500);
     let sleep_time_after_sub_op = Duration::from_millis(100);
     let mut instruction = None;
-    let mut op_code_address = 0;
+    let mut op_code_address = BigUint::from(0u32);
 
     
     for i in 1..50 {
@@ -139,10 +102,10 @@ fn main() {
             }
         }else {
             // Update Op Code Address
-            op_code_address = cpu.program_counter;
+            op_code_address = cpu.get_program_counter();
         }
 
-        print_status(&cpu, i, print_at_end_of_op, clear_screen, instruction.as_ref(), op_code_address, bytes_per_row);
+        print_status(&cpu, i, print_at_end_of_op, clear_screen, instruction.as_ref(), &op_code_address, &bytes_per_row);
         
         if sleep {
             wait_after_step(cpu.current_opcode.is_none(), sleep_time_after_op, sleep_time_after_sub_op);
@@ -154,7 +117,7 @@ fn main() {
     }
 }
 
-fn print_status(cpu: &CPU, i: u32, print_at_end_of_op: bool, clear_screen: bool, instruction: Option<&Instruction>, op_code_address: usize, bytes_per_row: usize) {
+fn print_status(cpu: &CPU, i: u32, print_at_end_of_op: bool, clear_screen: bool, instruction: Option<&Instruction>, op_code_address: &BigUint, bytes_per_row: &BigUint) {
     let pc_color = Color::BrightYellow;
     let op_code_color = Color::Red;
     let arg_colors = vec![
@@ -169,7 +132,8 @@ fn print_status(cpu: &CPU, i: u32, print_at_end_of_op: bool, clear_screen: bool,
         }
         println!("Cycle {}", i);
         println!("Halted: {}", cpu.is_halted());
-        println!("Program Counter: {}", cpu.program_counter);
+        let counter = cpu.get_program_counter();
+        println!("Program Counter: {}", counter);
         println!("Current Opcode: {:?}", cpu.current_opcode);
         println!("Current Sub Step: {} / {}", cpu.current_sub_step, instruction.map_or(0, |instr| instr.sub_instructions.len()));
         println!("Accumulator: {:?}", cpu.accumulator);
@@ -181,20 +145,20 @@ fn print_status(cpu: &CPU, i: u32, print_at_end_of_op: bool, clear_screen: bool,
             Some(ref instr) => instr.args,
             None => 0,
         };
-        let counter = cpu.program_counter;
-        for (i, byte) in memory_snapshot.iter().enumerate() {
+        let mut memory_counter = BigUint::zero();
+        for byte in memory_snapshot{
             let mut byte_text = ColoredString::from(format!("{:02x} ", byte));
-            if i == counter {
+            if memory_counter == counter {
                 byte_text.bgcolor = Some(pc_color);
             }
-            if i == op_code_address {
+            if &memory_counter == op_code_address {
                 byte_text.fgcolor = Some(op_code_color);
-            }else if i > op_code_address && arg_index < arg_count as usize {
+            }else if &memory_counter > op_code_address && arg_index < arg_count as usize {
                 byte_text.fgcolor = Some(arg_colors[arg_index]);
                 arg_index = (arg_index + 1) % arg_colors.len();
             }
-
-            if (i + 1) % bytes_per_row == 0 {
+            memory_counter += BigUint::one();
+            if &memory_counter % bytes_per_row == BigUint::zero() {
                 println!("{}", byte_text);
             }else {
                 print!("{}", byte_text);
