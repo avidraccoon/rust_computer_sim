@@ -228,6 +228,7 @@ version = "0.1.0"
 dependencies = [
  "clearscreen",
  "colored",
+ "lazy_static",
  "num-bigint",
  "num-traits",
 ]

@@ -1,6 +1,8 @@
+
 use num_bigint::BigUint;
 use num_traits::One; // Ensure the trait is in scope for BigUint::one()
 use num_traits::ToPrimitive;
+use num_traits::Zero;
 const USIZE_SIZE: usize = mem::size_of::<usize>();
 pub struct Memory {
     data: Vec<u8>,
@@ -62,58 +64,6 @@ impl Storage {
     }
 }
 
-fn add_u8_arrays(a: &[u8], b: &[u8]) -> Vec<u8> {
-    let max_len = a.len().max(b.len());
-    let mut result = Vec::with_capacity(max_len + 1);
-    let mut carry: u16 = 0;
-
-    for i in 0..max_len {
-        let digit_a = if i < a.len() { a[a.len() - 1 - i] } else { 0 };
-        let digit_b = if i < b.len() { b[b.len() - 1 - i] } else { 0 };
-
-        let sum = digit_a as u16 + digit_b as u16 + carry;
-        result.push((sum % 256) as u8);
-        carry = sum / 256;
-    }
-
-    if carry > 0 {
-        result.push(carry as u8);
-    }
-
-    result.reverse();
-    result
-}
-
-// Subtracts b from a, treating both as big-endian arrays of u8.
-// If b > a, result will wrap around (not negative).
-fn sub_u8_arrays(a: &[u8], b: &[u8]) -> Vec<u8> {
-    let max_len = a.len().max(b.len());
-    let mut result = Vec::with_capacity(max_len);
-    let mut borrow: i16 = 0;
-
-    for i in 0..max_len {
-        let digit_a = if i < a.len() { a[a.len() - 1 - i] } else { 0 };
-        let digit_b = if i < b.len() { b[b.len() - 1 - i] } else { 0 };
-
-        let mut diff = digit_a as i16 - digit_b as i16 - borrow;
-        if diff < 0 {
-            diff += 256;
-            borrow = 1;
-        } else {
-            borrow = 0;
-        }
-        result.push(diff as u8);
-    }
-
-    // Remove leading zeros
-    while result.len() > 1 && *result.last().unwrap() == 0 {
-        result.pop();
-    }
-
-    result.reverse();
-    result
-}
-
 #[derive(Clone)]
 pub enum SubInstructions {
     NoOperation,
@@ -133,8 +83,8 @@ pub enum SubInstructions {
     PopFromStack,
     Jump,
     Compare,
-    JumpIfFlag(u8, u8),
-    JumpIfNotFlag(u8, u8),
+    JumpIfFlag(BigUint, BigUint),
+    JumpIfNotFlag(BigUint, BigUint),
 }
 
 // Implement execution logic for SubInstructions
@@ -224,20 +174,23 @@ impl SubInstructions {
                 // TODO: handle longer numbers
                 let a = cpu.read_register_string("reg_a").unwrap()[0];
                 let b = cpu.read_register_string("reg_b").unwrap()[0];
+                let mut flags = cpu.get_flags();
                 if a == b {
-                    cpu.flags |= ZERO_FLAG;
-                    cpu.flags &= !GREATER_FLAG;
+                    flags |= ZERO_FLAG.clone();
+                    flags &= flag_invert(&GREATER_FLAG );
                 } else if a > b {
-                    cpu.flags |= GREATER_FLAG;
-                    cpu.flags &= !ZERO_FLAG;
+                    flags |= GREATER_FLAG.clone();
+                    flags &= flag_invert(&ZERO_FLAG);
                 } else {
-                    cpu.flags &= !(ZERO_FLAG | GREATER_FLAG);
+                    flags &= flag_invert(&(ZERO_FLAG.clone() | GREATER_FLAG.clone()));
                 }
+                cpu.set_flags(flags);
             }
             SubInstructions::JumpIfFlag(true_mask, false_mask) => {
                 // Jump if all bits in true_mask are set and all bits in false_mask are clear
-                let true_condition = (cpu.flags & true_mask) == *true_mask;
-                let false_condition = (cpu.flags & false_mask) == 0;
+                let flags = cpu.get_flags();
+                let true_condition = (flags.clone() & true_mask) == *true_mask;
+                let false_condition = (flags & false_mask) == BigUint::zero();
                 if true_condition && false_condition {
                     cpu.set_program_counter(cpu.get_accumulator());
                     cpu.current_opcode = None;
@@ -246,8 +199,9 @@ impl SubInstructions {
 
             SubInstructions::JumpIfNotFlag(true_mask, false_mask) => {
                 // Jump if NOT (all bits in true_mask are set and all bits in false_mask are clear)
-                let true_condition = (cpu.flags & true_mask) == *true_mask;
-                let false_condition = (cpu.flags & false_mask) == 0;
+                let flags = cpu.get_flags();
+                let true_condition = (flags.clone() & true_mask) == *true_mask;
+                let false_condition = (flags & false_mask) == BigUint::zero();
                 if !(true_condition && false_condition) {
                     cpu.set_program_counter(cpu.get_accumulator());
                     cpu.current_opcode = None;
@@ -317,10 +271,19 @@ use std::{collections::HashMap, hash::Hash, i32, ops::Sub, vec};
 // Zero Flag    | 0 0 1 1
 // Greater Flag | 0 1 0 1
 // CompareStatus| L G E N
-const ZERO_FLAG: u8 = 0b0000_0001;
-const GREATER_FLAG: u8 = 0b0000_0010;
+use lazy_static::lazy_static;
 
-// TODO: move accumulator, program_counter, flags to registers
+lazy_static! {
+    static ref FLAG_NONE: BigUint    = BigUint::from(0b0000_0000u8);
+    static ref FLAG_ALL: BigUint     = BigUint::from(0b1111_1111u8);
+    static ref ZERO_FLAG: BigUint    = BigUint::from(0b0000_0001u8);
+    static ref GREATER_FLAG: BigUint = BigUint::from(0b0000_0010u8);
+}
+
+pub fn flag_invert(mask: &BigUint) -> BigUint {
+    &*FLAG_ALL - mask
+}
+
 pub struct CPU {
     pub register_data: Vec<u8>,
     pub registers: Registers,
@@ -330,8 +293,7 @@ pub struct CPU {
     pub cpu_data_size: u8,
     pub current_opcode: Option<u8>,
     pub current_sub_step: u8,
-    pub halted: bool,
-    pub flags: u8,
+    pub halted: bool
 }
 
 impl CPU {
@@ -345,8 +307,7 @@ impl CPU {
             cpu_data_size: 1,
             current_opcode: None,
             current_sub_step: 0,
-            halted: false,
-            flags: 0,
+            halted: false
         };
         cpu.write_register_string("stack_pointer", &[cpu.memory.data.len() as u8]).unwrap();
         cpu
@@ -453,6 +414,20 @@ impl CPU {
     pub fn set_accumulator(&mut self, value: BigUint) {
         let bytes = value.to_bytes_be();
         self.write_register_string("accumulator", &bytes).expect("Failed to write accumulator");
+    }
+
+    pub fn get_flags_bytes(&self) -> &[u8] {
+        self.read_register_string("flags").expect("Flags register not found.")
+    }
+
+    pub fn get_flags(&mut self) -> BigUint {
+        let bytes = self.get_flags_bytes();
+        BigUint::from_bytes_be(bytes)
+    }
+
+    pub fn set_flags(&mut self, value: BigUint) {
+        let bytes = value.to_bytes_be();
+        self.write_register_string("flags", &bytes).expect("Failed to write flags");
     }
 
     pub fn step(&mut self) {
