@@ -209,9 +209,7 @@ impl SubInstructions {
                 let _ = cpu.write_register_string("stack_pointer", &[stack_pointer as u8]);
             }
             SubInstructions::Jump => {
-                // TODO: handle longer numbers
-                let address = cpu.accumulator[0] as usize;
-                cpu.program_counter = address;
+                cpu.set_program_counter(BigUint::from_bytes_be(cpu.accumulator.as_slice()));
                 cpu.current_opcode = None;
             }
             SubInstructions::Compare => {
@@ -234,8 +232,7 @@ impl SubInstructions {
                 let true_condition = (cpu.flags & true_mask) == *true_mask;
                 let false_condition = (cpu.flags & false_mask) == 0;
                 if true_condition && false_condition {
-                    let address = cpu.accumulator[0] as usize;
-                    cpu.program_counter = address;
+                    cpu.set_program_counter(BigUint::from_bytes_be(cpu.accumulator.as_slice()));
                     cpu.current_opcode = None;
                 }
             }
@@ -246,7 +243,7 @@ impl SubInstructions {
                 let false_condition = (cpu.flags & false_mask) == 0;
                 if !(true_condition && false_condition) {
                     let address = cpu.accumulator[0] as usize;
-                    cpu.program_counter = address;
+                    cpu.set_program_counter(BigUint::from_bytes_be(cpu.accumulator.as_slice()));
                     cpu.current_opcode = None;
                 }
             }
@@ -318,7 +315,6 @@ const GREATER_FLAG: u8 = 0b0000_0010;
 
 // TODO: move accumulator, program_counter, flags to registers
 pub struct CPU {
-    pub program_counter: usize,
     pub accumulator: Vec<u8>,
     pub register_data: Vec<u8>,
     pub registers: Registers,
@@ -334,8 +330,7 @@ pub struct CPU {
 
 impl CPU {
     pub fn new(registers: Registers, memory: Memory, storage: Storage) -> Self {
-        let mut cpu = CPU { 
-            program_counter: 0, 
+        let mut cpu = CPU {
             accumulator: vec![0], 
             register_data: vec![0; registers.total_length], 
             registers, 
@@ -436,18 +431,19 @@ impl CPU {
         self.read_register_string("program_counter").expect("Program Counter register not found.")
     }
 
+    pub fn set_program_counter(&mut self, value: BigUint) {
+        let bytes = value.to_bytes_be();
+        self.write_register_string("program_counter", &bytes).expect("Failed to write program counter");
+    }
+
     pub fn step(&mut self) {
         let counter = self.get_program_counter();
-        let new_counter = counter + BigUint::one();
-        let new_counter_bytes = new_counter.to_bytes_be();
-        let _ = self.write_register_string("program_counter", &new_counter_bytes).expect("Failed to write program counter");
+        self.set_program_counter(counter + BigUint::one());
     }
 
     pub fn step_size(&mut self, size: u8) {
-        let counter = self.get_program_counter();
-        let new_counter = counter + size;
-        let new_counter_bytes = new_counter.to_bytes_be();
-        let _ = self.write_register_string("program_counter", &new_counter_bytes).expect("Failed to write program counter");
+        let counter: BigUint = self.get_program_counter();
+        self.set_program_counter(counter + BigUint::from(size));
     }
 
     
