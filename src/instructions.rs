@@ -4,7 +4,7 @@ use crate::InstructionSet;
 
 
 
-pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut ref_reg: impl FnMut(&str) -> u8) {
+pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut ref_reg: impl FnMut(&str) -> u8, cpu_data_size: u8) {
 
     let reg_a = ref_reg("reg_a");
     let reg_b = ref_reg("reg_b");

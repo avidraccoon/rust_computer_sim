@@ -56,7 +56,7 @@ fn main() {
     };
     let mut instruction_set_writer = writers::InstructionSetWriter::new();
 
-    add_instructions(&mut instruction_set_writer, &mut ref_reg);
+    add_instructions(&mut instruction_set_writer, &mut ref_reg, cpu.cpu_data_size);
 
     let reg_0 = ref_reg("reg_0");
     let reg_1 = ref_reg("reg_1");
@@ -85,7 +85,7 @@ fn main() {
     let print_at_end_of_op = false;
     let clear_screen = true;
     let sleep = true;
-    let sleep_time_after_op = Duration::from_millis(500);
+    let sleep_time_after_op = Duration::from_millis(1000);
     let sleep_time_after_sub_op = Duration::from_millis(100);
     let mut instruction = None;
     let mut op_code_address = BigUint::from(0u32);
@@ -130,13 +130,14 @@ fn print_status(cpu: &CPU, i: u32, print_at_end_of_op: bool, clear_screen: bool,
         if clear_screen {
             clearscreen::clear().expect("failed to clear screen");
         }
+        let counter = cpu.get_program_counter();
+        let accumulator = cpu.get_accumulator();
         println!("Cycle {}", i);
         println!("Halted: {}", cpu.is_halted());
-        let counter = cpu.get_program_counter();
         println!("Program Counter: {}", counter);
         println!("Current Opcode: {:?}", cpu.current_opcode);
         println!("Current Sub Step: {} / {}", cpu.current_sub_step, instruction.map_or(0, |instr| instr.sub_instructions.len()));
-        println!("Accumulator: {:?}", cpu.accumulator);
+        println!("Accumulator: {:?}", accumulator);
         println!("Registers: {:?}", cpu.register_data);
         let memory_snapshot = cpu.memory.read_chunk(0, 64);
         println!("Memory Snapshot:\n");

@@ -1,7 +1,7 @@
 use num_bigint::BigUint;
 use num_traits::One; // Ensure the trait is in scope for BigUint::one()
 use num_traits::ToPrimitive;
-
+const USIZE_SIZE: usize = mem::size_of::<usize>();
 pub struct Memory {
     data: Vec<u8>,
 }
@@ -147,69 +147,76 @@ impl SubInstructions {
             }
             SubInstructions::LoadImmediate(data_offset) => {
                 let value = cpu.read_program_memory_offset(*data_offset);
-                cpu.accumulator = [value].to_vec();
+                cpu.set_accumulator(BigUint::from(value));
             }
             SubInstructions::LoadFromMemory => {
                 // TODO: handle longer numbers
                 let address = cpu.read_register_string("memory_address").clone().unwrap()[0] as usize;
                 let value = cpu.memory.read_chunk(address, address + cpu.cpu_data_size as usize);
-                cpu.accumulator = value.to_vec();
+                cpu.set_accumulator(BigUint::from_bytes_be(value));
             }
             SubInstructions::LoadFromRegister(data_offset) => {
                 let register = cpu.read_program_memory_offset(*data_offset);
-                cpu.accumulator = cpu.read_register(register).unwrap_or(&[0]).to_vec();
+                let bytes = cpu.read_register(register).unwrap_or(&[0]);
+                cpu.set_accumulator(BigUint::from_bytes_be(bytes));
             }
             SubInstructions::LoadFromRegisterInternal(register) => {
-                cpu.accumulator = cpu.read_register(*register).unwrap_or(&[0]).to_vec();
+                let bytes= cpu.read_register(*register).unwrap_or(&[0]).to_vec();
+                cpu.set_accumulator(BigUint::from_bytes_be(&bytes));
             }
             SubInstructions::SetMemoryAddress => {
-               let value = cpu.accumulator.clone();
-               let _ = cpu.write_register_string("memory_address", &value);
+               let value = cpu.get_accumulator_bytes().to_vec();
+               let _ = cpu.write_register_string("memory_address", value.as_slice());
             }
             SubInstructions::StoreToMemory => {
                 // TODO: handle longer numbers
                 let address = cpu.read_register_string("memory_address").clone().unwrap()[0] as usize;
-                let value = &cpu.accumulator;
+                let value = cpu.get_accumulator_bytes().to_vec();
                 cpu.memory.write_chunk(address, value.as_slice());
             }
             SubInstructions::StoreToRegister(data_offset) => {
                 let register = cpu.read_program_memory_offset(*data_offset);
-                let value = cpu.accumulator.clone();
-                let _ = cpu.write_register(register, &value);
+                let value = cpu.get_accumulator_bytes().to_vec();
+                let _ = cpu.write_register(register, value.as_slice());
             }
             SubInstructions::StoreToRegisterInternal(register) => {
-                let value = cpu.accumulator.clone();
-                let _ = cpu.write_register(*register, &value);
+                let value: Vec<u8> = cpu.get_accumulator_bytes().to_vec();
+                let _ = cpu.write_register(*register, value.as_slice());
             }
             SubInstructions::StepProgramMemory(steps) => {
                 cpu.step_size(*steps);
             }
             SubInstructions::Add => {
-                let a_value = cpu.read_register_string("reg_a");
-                let b_value = cpu.read_register_string("reg_b");
-                let sum_value = add_u8_arrays(a_value.unwrap(), b_value.unwrap());
-                cpu.accumulator = sum_value;
+                let a_value = BigUint::from_bytes_be(cpu.read_register_string("reg_a").unwrap());
+                let b_value = BigUint::from_bytes_be(cpu.read_register_string("reg_b").unwrap());
+                let sum_value = a_value + b_value;
+                cpu.set_accumulator(sum_value);
             }
             SubInstructions::Sub => {
-                let a_value = cpu.read_register_string("reg_a");
-                let b_value = cpu.read_register_string("reg_b");
-                let sub_value = sub_u8_arrays(a_value.unwrap(), b_value.unwrap());
-                cpu.accumulator = sub_value;
+                let a_value = BigUint::from_bytes_be(cpu.read_register_string("reg_a").unwrap());
+                let b_value = BigUint::from_bytes_be(cpu.read_register_string("reg_b").unwrap());
+                let sub_value = a_value - b_value;
+                cpu.set_accumulator(sub_value);
             }
             SubInstructions::PushToStack => {
-                let stack_pointer = cpu.read_register_string("stack_pointer").unwrap()[0] as usize;
-                let destination = stack_pointer - cpu.accumulator.len() + 1;
-                cpu.memory.write_chunk(destination, cpu.accumulator.as_slice());
-                let _ = cpu.write_register_string("stack_pointer", &[destination as u8 - 1]);
+                let stack_pointer = BigUint::from_bytes_be(cpu.read_register_string("stack_pointer").unwrap());
+                let accumulator_bytes = cpu.get_accumulator_bytes().to_vec();
+                let destination = (stack_pointer - cpu.cpu_data_size).to_usize().expect("Stack pointer outside usize range");
+                cpu.memory.write_chunk(destination, accumulator_bytes.as_slice());
+                let cpu_adjusted = &destination.to_be_bytes()[USIZE_SIZE - cpu.cpu_data_size as usize..];
+                let _ = cpu.write_register_string("stack_pointer", cpu_adjusted);
             }
             SubInstructions::PopFromStack => {
-                let stack_pointer = cpu.read_register_string("stack_pointer").unwrap()[0] as usize + 1;
-                cpu.accumulator = cpu.memory.read_chunk(stack_pointer, stack_pointer + cpu.cpu_data_size as usize).to_vec();
-                cpu.memory.write_chunk(stack_pointer, vec![0; cpu.cpu_data_size as usize].as_slice());
-                let _ = cpu.write_register_string("stack_pointer", &[stack_pointer as u8]);
+                let stack_pointer = BigUint::from_bytes_be(cpu.read_register_string("stack_pointer").unwrap());
+                let address = stack_pointer.to_usize().expect("Stack pointer outside usize range");
+                let data = cpu.memory.read_chunk(address, address + cpu.cpu_data_size as usize);
+                cpu.set_accumulator(BigUint::from_bytes_be(data));
+                cpu.memory.write_chunk(address, vec![0; cpu.cpu_data_size as usize].as_slice());
+                let cpu_adjusted = &address.to_be_bytes()[USIZE_SIZE - cpu.cpu_data_size as usize..];
+                let _ = cpu.write_register_string("stack_pointer", cpu_adjusted);
             }
             SubInstructions::Jump => {
-                cpu.set_program_counter(BigUint::from_bytes_be(cpu.accumulator.as_slice()));
+                cpu.set_program_counter(cpu.get_accumulator());
                 cpu.current_opcode = None;
             }
             SubInstructions::Compare => {
@@ -232,7 +239,7 @@ impl SubInstructions {
                 let true_condition = (cpu.flags & true_mask) == *true_mask;
                 let false_condition = (cpu.flags & false_mask) == 0;
                 if true_condition && false_condition {
-                    cpu.set_program_counter(BigUint::from_bytes_be(cpu.accumulator.as_slice()));
+                    cpu.set_program_counter(cpu.get_accumulator());
                     cpu.current_opcode = None;
                 }
             }
@@ -242,8 +249,7 @@ impl SubInstructions {
                 let true_condition = (cpu.flags & true_mask) == *true_mask;
                 let false_condition = (cpu.flags & false_mask) == 0;
                 if !(true_condition && false_condition) {
-                    let address = cpu.accumulator[0] as usize;
-                    cpu.set_program_counter(BigUint::from_bytes_be(cpu.accumulator.as_slice()));
+                    cpu.set_program_counter(cpu.get_accumulator());
                     cpu.current_opcode = None;
                 }
             }
@@ -302,6 +308,7 @@ impl Registers {
     }
 }
 
+use std::mem;
 use std::{collections::HashMap, hash::Hash, i32, ops::Sub, vec};
 
 // Truth Table
@@ -315,7 +322,6 @@ const GREATER_FLAG: u8 = 0b0000_0010;
 
 // TODO: move accumulator, program_counter, flags to registers
 pub struct CPU {
-    pub accumulator: Vec<u8>,
     pub register_data: Vec<u8>,
     pub registers: Registers,
     pub memory: Memory,
@@ -330,8 +336,7 @@ pub struct CPU {
 
 impl CPU {
     pub fn new(registers: Registers, memory: Memory, storage: Storage) -> Self {
-        let mut cpu = CPU {
-            accumulator: vec![0], 
+        let mut cpu = CPU { 
             register_data: vec![0; registers.total_length], 
             registers, 
             memory, 
@@ -343,7 +348,7 @@ impl CPU {
             halted: false,
             flags: 0,
         };
-        cpu.write_register_string("stack_pointer", &[cpu.memory.data.len() as u8 - 1]).unwrap();
+        cpu.write_register_string("stack_pointer", &[cpu.memory.data.len() as u8]).unwrap();
         cpu
     }
 
@@ -434,6 +439,20 @@ impl CPU {
     pub fn set_program_counter(&mut self, value: BigUint) {
         let bytes = value.to_bytes_be();
         self.write_register_string("program_counter", &bytes).expect("Failed to write program counter");
+    }
+
+    pub fn get_accumulator(&self) -> BigUint {
+        let bytes = self.read_register_string("accumulator").expect("Accumulator register not found.");
+        BigUint::from_bytes_be(bytes)
+    }
+
+    pub fn get_accumulator_bytes(&self) -> &[u8] {
+        self.read_register_string("accumulator").expect("Accumulator register not found.")
+    }
+
+    pub fn set_accumulator(&mut self, value: BigUint) {
+        let bytes = value.to_bytes_be();
+        self.write_register_string("accumulator", &bytes).expect("Failed to write accumulator");
     }
 
     pub fn step(&mut self) {
