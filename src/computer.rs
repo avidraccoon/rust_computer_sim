@@ -274,10 +274,10 @@ use std::{collections::HashMap, hash::Hash, i32, ops::Sub, vec};
 use lazy_static::lazy_static;
 
 lazy_static! {
-    static ref FLAG_NONE: BigUint    = BigUint::from(0b0000_0000u8);
-    static ref FLAG_ALL: BigUint     = BigUint::from(0b1111_1111u8);
-    static ref ZERO_FLAG: BigUint    = BigUint::from(0b0000_0001u8);
-    static ref GREATER_FLAG: BigUint = BigUint::from(0b0000_0010u8);
+    pub static ref FLAG_NONE: BigUint    = BigUint::from(0b0000_0000u8);
+    pub static ref FLAG_ALL: BigUint     = BigUint::from(0b1111_1111u8);
+    pub static ref ZERO_FLAG: BigUint    = BigUint::from(0b0000_0001u8);
+    pub static ref GREATER_FLAG: BigUint = BigUint::from(0b0000_0010u8);
 }
 
 pub fn flag_invert(mask: &BigUint) -> BigUint {

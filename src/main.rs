@@ -22,6 +22,8 @@ enum InstructionSet {
     StoreToMemoryReg,   // #Reg #Reg/Addr
     AddImmediate,       // #Reg #Imm
     AddReg,             // #Reg #Reg
+    SubImmediate,       // #Reg #Imm
+    SubReg,             // #Reg #Reg
     LoadImmediate,      // #Reg #Imm
     MoveRegister,       // #Reg #Reg
     PushImmediate,      // #Imm
@@ -41,7 +43,11 @@ enum InstructionSet {
     JumpLessThanReg,    // #Reg/Addr #Reg (A) #Reg (B)
     JumpLessEqualReg,   // #Reg/Addr #Reg (A) #Reg (B)
     JumpGreaterEqualReg,// #Reg/Addr #Reg (A) #Reg (B)
+    Return,             // No args
 }
+//
+// Jump sets the return_address
+//
 
 impl Into<u8> for InstructionSet {
     fn into(self) -> u8 {
