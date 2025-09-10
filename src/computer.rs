@@ -69,6 +69,7 @@ pub enum SubInstructions {
     NoOperation,
     Halt,
     LoadImmediate(u8),
+    LoadImmediateInternal(u8),
     LoadFromMemory,
     LoadFromRegister(u8),
     LoadFromRegisterInternal(u8),
@@ -98,6 +99,9 @@ impl SubInstructions {
             SubInstructions::LoadImmediate(data_offset) => {
                 let value = cpu.read_program_memory_offset(*data_offset);
                 cpu.set_accumulator(BigUint::from(value));
+            }
+            SubInstructions::LoadImmediateInternal(value) => {;
+                cpu.set_accumulator(BigUint::from(*value));
             }
             SubInstructions::LoadFromMemory => {
                 // TODO: handle longer numbers
@@ -492,7 +496,7 @@ pub fn create_default_cpu_with_memory(memory: Memory, storage: Storage) -> CPU {
     registers.add_register("accumulator".to_string(), 1, 1);
     registers.add_register("flags".to_string(), 1, 2);
     registers.add_register("stack_pointer".to_string(), 1, 3);
-    registers.add_register("return_address".to_string(), 1, 4);
+    registers.add_register("base_pointer".to_string(), 1, 4);
     registers.add_register("memory_pointer".to_string(), 1, 5);
     registers.add_register("instruction_temp_0".to_string(), 1, 6);
     registers.add_register("instruction_temp_1".to_string(), 1, 7);

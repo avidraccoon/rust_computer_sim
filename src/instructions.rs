@@ -14,7 +14,9 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
     let i_temp_2 = ref_reg("instruction_temp_2");
     let i_temp_3 = ref_reg("instruction_temp_3");
     let program_counter = ref_reg("program_counter");
-    let return_address = ref_reg("return_address");
+    let stack_pointer = ref_reg("stack_pointer");
+    let base_pointer = ref_reg("base_pointer");
+    let flags = ref_reg("flags");
 
     instruction_set_writer.add_instruction(InstructionSet::NoOperation, 0);
 
@@ -111,10 +113,25 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
         .add_sub_instruction(SubInstructions::StepProgramMemory(1));
 
     instruction_set_writer.add_instruction(InstructionSet::Jump, 1)
-        // TODO: Maybe make use of the stack.
         // Start of address storing
-        .add_sub_instruction(SubInstructions::LoadFromRegister(program_counter))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
+        // saving base_pointer
+        .add_sub_instruction(SubInstructions::LoadFromRegisterInternal(base_pointer))
+        .add_sub_instruction(SubInstructions::PushToStack)
+        // saving flags
+        .add_sub_instruction(SubInstructions::LoadFromRegisterInternal(flags))
+        .add_sub_instruction(SubInstructions::PushToStack)
+        // calulating program counter at end of current instruction
+        .add_sub_instruction(SubInstructions::LoadFromRegisterInternal(program_counter))
+        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(reg_a))
+        .add_sub_instruction(SubInstructions::LoadImmediateInternal(3))
+        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(reg_b))
+        .add_sub_instruction(SubInstructions::Add)
+        // Return flags to saved state
+        .add_sub_instruction(SubInstructions::PopFromStack)
+        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(flags))
+        // Storing calculated return address
+        .add_sub_instruction(SubInstructions::LoadFromRegister(reg_a))
+        .add_sub_instruction(SubInstructions::PushToStack)
         // END of address storing
         .add_sub_instruction(SubInstructions::LoadImmediate(1))
         .add_sub_instruction(SubInstructions::Jump);
@@ -123,7 +140,7 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
         // TODO: Maybe make use of the stack.
         // Start of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(program_counter))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
+        // .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
         // END of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(1))
         .add_sub_instruction(SubInstructions::Jump);
@@ -150,7 +167,7 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
         // TODO: Maybe make use of the stack.
         // Start of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(program_counter))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
+        // .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
         // END of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(1))
         .add_sub_instruction(SubInstructions::JumpIfFlag(equal_mask_true.clone(), equal_mask_false.clone()))
@@ -165,7 +182,7 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
         // TODO: Maybe make use of the stack.
         // Start of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(program_counter))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
+        // .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
         // END of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(1))
         .add_sub_instruction(SubInstructions::JumpIfFlag(equal_mask_true.clone(), equal_mask_false.clone()))
@@ -180,7 +197,7 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
         // TODO: Maybe make use of the stack.
         // Start of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(program_counter))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
+        // .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
         // END of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(1))
         .add_sub_instruction(SubInstructions::JumpIfFlag(not_equal_mask_true.clone(), not_equal_mask_false.clone()))
@@ -195,7 +212,7 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
         // TODO: Maybe make use of the stack.
         // Start of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(program_counter))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
+        // .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
         // END of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(1))
         .add_sub_instruction(SubInstructions::JumpIfFlag(not_equal_mask_true.clone(), not_equal_mask_false.clone()))
@@ -210,7 +227,7 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
         // TODO: Maybe make use of the stack.
         // Start of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(program_counter))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
+        // .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
         // END of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(1))
         .add_sub_instruction(SubInstructions::JumpIfFlag(greater_mask_true.clone(), greater_mask_false.clone()))
@@ -225,7 +242,7 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
         // TODO: Maybe make use of the stack.
         // Start of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(program_counter))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
+        // .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
         // END of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(1))
         .add_sub_instruction(SubInstructions::JumpIfFlag(greater_mask_true.clone(), greater_mask_false.clone()))
@@ -240,7 +257,7 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
         // TODO: Maybe make use of the stack.
         // Start of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(program_counter))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
+        // .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
         // END of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(1))
         .add_sub_instruction(SubInstructions::JumpIfFlag(less_mask_true.clone(), less_mask_false.clone()))
@@ -255,7 +272,7 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
         // TODO: Maybe make use of the stack.
         // Start of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(program_counter))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
+        // .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
         // END of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(1))
         .add_sub_instruction(SubInstructions::JumpIfFlag(less_mask_true.clone(), less_mask_false.clone()))
@@ -270,7 +287,7 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
         // TODO: Maybe make use of the stack.
         // Start of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(program_counter))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
+        // .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
         // END of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(1))
         .add_sub_instruction(SubInstructions::JumpIfFlag(less_equal_mask_true.clone(), less_equal_mask_false.clone()))
@@ -285,7 +302,7 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
         // TODO: Maybe make use of the stack.
         // Start of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(program_counter))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
+        // .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
         // END of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(1))
         .add_sub_instruction(SubInstructions::JumpIfFlag(less_equal_mask_true.clone(), less_equal_mask_false.clone()))
@@ -300,7 +317,7 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
         // TODO: Maybe make use of the stack.
         // Start of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(program_counter))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
+        // .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
         // END of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(1))
         .add_sub_instruction(SubInstructions::JumpIfFlag(great_equal_mask_true.clone(), great_equal_mask_false.clone()))
@@ -312,19 +329,35 @@ pub fn add_instructions(instruction_set_writer: &mut InstructionSetWriter, mut r
         .add_sub_instruction(SubInstructions::LoadFromRegister(3))
         .add_sub_instruction(SubInstructions::StoreToRegisterInternal(reg_b))
         .add_sub_instruction(SubInstructions::Compare)
-        // TODO: Maybe make use of the stack.
         // Start of address storing
-        .add_sub_instruction(SubInstructions::LoadFromRegister(program_counter))
-        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(return_address))
+        // saving base_pointer
+        .add_sub_instruction(SubInstructions::LoadFromRegisterInternal(base_pointer))
+        .add_sub_instruction(SubInstructions::PushToStack)
+        // saving flags
+        .add_sub_instruction(SubInstructions::LoadFromRegisterInternal(flags))
+        .add_sub_instruction(SubInstructions::PushToStack)
+        // calulating program counter at end of current instruction
+        .add_sub_instruction(SubInstructions::LoadFromRegisterInternal(program_counter))
+        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(reg_a))
+        .add_sub_instruction(SubInstructions::LoadImmediateInternal(3))
+        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(reg_b))
+        .add_sub_instruction(SubInstructions::Add)
+        // Return flags to saved state
+        .add_sub_instruction(SubInstructions::PopFromStack)
+        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(flags))
+        // Storing calculated return address
+        .add_sub_instruction(SubInstructions::LoadFromRegister(reg_a))
+        .add_sub_instruction(SubInstructions::PushToStack)
         // END of address storing
         .add_sub_instruction(SubInstructions::LoadFromRegister(1))
         .add_sub_instruction(SubInstructions::JumpIfFlag(great_equal_mask_true.clone(), great_equal_mask_false.clone()))
         .add_sub_instruction(SubInstructions::StepProgramMemory(3));
 
     instruction_set_writer.add_instruction(InstructionSet::Return, 0)
-        .add_sub_instruction(SubInstructions::LoadFromRegister(ref_reg("return_address")))
-        .add_sub_instruction(SubInstructions::Jump);
-
+        .add_sub_instruction(SubInstructions::PopFromStack) // Get return address
+        .add_sub_instruction(SubInstructions::StoreToRegisterInternal(program_counter))
+        .add_sub_instruction(SubInstructions::PopFromStack)//Recover from saved
+        .add_sub_instruction(SubInstructions::)
 
 
 }
